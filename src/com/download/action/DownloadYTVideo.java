@@ -7,12 +7,16 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.ObjectInputStream.GetField;
 import java.io.OutputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
+import java.net.URLDecoder;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * This will download Youtube file from the given URL.
@@ -101,7 +105,7 @@ public class DownloadYTVideo {
 	{
 		String sErrorMessg = "";
         try {
-        	
+        	System.out.println(youtube.getDownLoadURL());
         	URL urlVideoURL = new URL(youtube.getDownLoadURL());
             URLConnection urlConnection = urlVideoURL.openConnection();
             InputStream inStreamVideo = urlConnection.getInputStream();
@@ -147,22 +151,26 @@ public class DownloadYTVideo {
 			boolean isTitleFound = false;
 			while ((inputLine = in.readLine()) != null)
 			{
-				if(inputLine.contains("generate_204") && !isDownUrlFound)
-				{	// Retireve the Stream URL and clean up the file.
-					System.out.println(inputLine);
-                    Integer iStartIndex =  inputLine.indexOf("http:")+9;
-                    Integer iEndIndex =  inputLine.indexOf("\");");
-					String sVideoURL = inputLine.substring( (inputLine.indexOf("http:")+9) , inputLine.indexOf("\");") );
-					
-					sVideoURL = "https://" + sVideoURL;
-					
-					sVideoURL = sVideoURL.replace("\\/", "/");
-					sVideoURL = sVideoURL.replace("%2C", ",");
-					sVideoURL = sVideoURL.replace("\\u0026", "&");
-					sVideoURL = sVideoURL.replace("generate_204", "videoplayback"); //if we dont replace this, no download takes place.
-					
-					youtube.setDownLoadURL(sVideoURL);
-					isDownUrlFound = true;
+				if (inputLine.contains("ytplayer.config"))
+				{
+					Pattern pattern = Pattern.compile("\"url_encoded_fmt_stream_map\": \".*?\"");
+					Matcher m = pattern.matcher(inputLine);
+					String urlStrings = null;
+					String sVideoURL = null;
+					if (m.find()) {
+						urlStrings = m.group();
+						urlStrings = urlStrings.substring(31, m.group().length() - 1);
+						
+						for (String var : urlStrings.split(",")) {
+							if (var.contains("type=video%2Fmp4")) {
+								sVideoURL = rebuild(URLDecoder.decode(var).replace("\\u0026", "&"));
+								break;
+							}
+						}
+
+						youtube.setDownLoadURL(sVideoURL);
+						isDownUrlFound = true;
+					}
 				}
 				else if(inputLine.contains("<meta name=\"title\"") && !isTitleFound)
 				{
@@ -195,5 +203,20 @@ public class DownloadYTVideo {
 		}
         return youtube;
 	}
+	
+	private String rebuild(String param) {
+		String ex[] = {"type", "fallback_host", "quality"};
+		List excludeList = Arrays.asList(ex);
 
+		String url = null;
+		String query = "";
+		for (String var: param.split("&")) {
+			if (var.split("=")[0].equals("url")) {
+				url = var.replace("url=", "");
+			} else if (!excludeList.contains(var.split("=")[0])) {
+				query = query + "&" + var;
+			}
+		}
+		return url + query.replaceFirst("itag=[0-9][0-9]&", "");
+	}
 }
